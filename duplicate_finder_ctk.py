@@ -686,8 +686,8 @@ class DuplicateFinderApp(ctk.CTk):
         self.log_text = ctk.CTkTextbox(
             log_container, 
             fg_color=COLORS["bg_dark"], 
-            border_width=0, 
-            font=("JetBrains Mono", 11), 
+            border_width=0,
+            font=("JetBrains Mono", 13),
             text_color=COLORS["accent_green"],
             activate_scrollbars=True
         )
@@ -811,7 +811,7 @@ class DuplicateFinderApp(ctk.CTk):
                 self.update_dir_list()
                 self.add_log(f"✓ 添加目录: {path}")
             else:
-                messagebox.showinfo("提示", "该目录已在列表中")
+                self.show_custom_dialog("提示", "该目录已在列表中", "info")
                 
     def clear_directories(self):
         """清空目录列表"""
@@ -942,7 +942,7 @@ class DuplicateFinderApp(ctk.CTk):
             return
 
         if not self.scan_paths:
-            messagebox.showwarning("提示", "请先添加要扫描的目录")
+            self.show_custom_dialog("提示", "请先添加要扫描的目录", "warning")
             return
 
         # 取消之前正在进行的渲染
@@ -1370,12 +1370,12 @@ class DuplicateFinderApp(ctk.CTk):
         
     def _create_simple_row(self, idx: int, group: dict):
         """创建美化版行"""
-        # 美化卡片：增加边框、合适的高度、hover效果
+        # 美化卡片：增加边框、合适的高度、hover效果，解决底色超出边框问题
         row = ctk.CTkFrame(self.result_frame, fg_color=COLORS["bg_card"], corner_radius=12, height=68, border_width=1, border_color=COLORS["border"])
         row._idx = idx
         row._group = group
         row._expanded = False
-        row.pack(fill="x", pady=8, padx=4)
+        row.pack(fill="x", pady=6, padx=6)
         row.pack_propagate(False)
 
         # 鼠标悬停高亮效果
@@ -1465,9 +1465,9 @@ class DuplicateFinderApp(ctk.CTk):
         row._expanded = True
         group = row._group
 
-        # 直接在行下面插入详情
+        # 直接在行下面插入详情，和卡片保持对齐
         detail = ctk.CTkFrame(self.result_frame, fg_color="transparent")
-        detail.pack(fill="x", pady=(0, 4), after=row)
+        detail.pack(fill="x", pady=(0, 4), padx=6, after=row)
 
         # 文件数太多时，限制一次显示的数量，提供滚动
         files = group['paths']
@@ -1514,7 +1514,7 @@ class DuplicateFinderApp(ctk.CTk):
                 """将选中的文件添加到全局选中集合"""
                 selected_indices = listbox.curselection()
                 if not selected_indices:
-                    messagebox.showinfo("提示", "请先在列表中选中要删除的文件（按住Ctrl可多选，按住Shift可连选）")
+                    self.show_custom_dialog("提示", "请先在列表中选中要删除的文件（按住Ctrl可多选，按住Shift可连选）", "info")
                     return
                 count = 0
                 for idx in selected_indices:
@@ -1530,10 +1530,30 @@ class DuplicateFinderApp(ctk.CTk):
                 """直接删除这里选中的文件"""
                 selected_indices = listbox.curselection()
                 if not selected_indices:
-                    messagebox.showinfo("提示", "请先在列表中选中要删除的文件")
+                    self.show_custom_dialog("提示", "请先在列表中选中要删除的文件", "info")
                     return
-                if not messagebox.askyesno("确认删除", f"确定要删除选中的 {len(selected_indices)} 个文件吗？"):
-                    return
+
+                def confirm_delete():
+                    # 从后往前删，避免索引变化
+                    for idx in sorted(selected_indices, reverse=True):
+                        filepath = files[idx]
+                        if not os.path.exists(filepath):
+                            continue
+                        try:
+                            file_size = os.path.getsize(filepath)
+                            send2trash.send2trash(filepath)
+                            self.add_log(f"🗑️ 已删除: {os.path.basename(filepath)}")
+                            if filepath in self.selected_files:
+                                self.selected_files.discard(filepath)
+                        except Exception as e:
+                            self.add_log(f"❌ 删除失败: {os.path.basename(filepath)} - {str(e)}")
+                    # 更新结果
+                    self.update_stats()
+                    self.render_results()
+                    detail_win.destroy()
+
+                self.show_custom_dialog("确认删除", f"确定要删除选中的 {len(selected_indices)} 个文件吗？", "confirm", confirm_delete)
+                return
 
                 # 从后往前删，避免索引变化
                 for idx in sorted(selected_indices, reverse=True):
@@ -2125,7 +2145,7 @@ class DuplicateFinderApp(ctk.CTk):
             os.startfile(folder)
             self.add_log(f"📂 已打开: {folder}")
         else:
-            messagebox.showerror("错误", "文件夹不存在")
+            self.show_custom_dialog("错误", "文件夹不存在", "error")
             
     def open_file(self, filepath: str):
         """直接打开文件"""
@@ -2133,11 +2153,11 @@ class DuplicateFinderApp(ctk.CTk):
             os.startfile(filepath)
             self.add_log(f"▶ 已打开: {filepath}")
         else:
-            messagebox.showerror("错误", "文件不存在")
+            self.show_custom_dialog("错误", "文件不存在", "error")
             
     def delete_single_file(self, filepath: str):
         """删除单个文件到回收站 - 增量更新，不重新扫描"""
-        if messagebox.askyesno("确认删除", f"确定要将此文件移到回收站？\n\n{filepath}"):
+        def confirm_delete():
             try:
                 if os.path.exists(filepath):
                     # 在删除前获取文件大小
@@ -2149,32 +2169,28 @@ class DuplicateFinderApp(ctk.CTk):
                     if filepath in self.selected_files:
                         self.selected_files.discard(filepath)
 
-                    # 从 duplicates 中移除这个文件
+                    # 查找该文件所在的组
                     need_rerender = False
-                    # 遍历原列表，找到正确的组（从后往前遍历避免删除影响索引）
-                    for i in range(len(self.duplicates) - 1, -1, -1):
-                        group = self.duplicates[i]
+                    for group in self.duplicates:
                         if filepath in group['paths']:
                             group['paths'].remove(filepath)
-                            self.duplicate_files -= 1
-                            self.wasted_space -= file_size
-
-                            # 如果组内只剩 <=1 个文件，整个组删掉
-                            if len(group['paths']) <= 1:
-                                del self.duplicates[i]
-                                self.duplicate_groups -= 1
-
-                            need_rerender = True
+                            # 如果组内只剩下一个文件，就从结果中移除该组
+                            if len(group['paths']) < 2:
+                                self.duplicates.remove(group)
+                                need_rerender = True
                             break
 
                     self.update_stats()
                     if need_rerender:
                         self.render_results()
                 else:
-                    messagebox.showerror("错误", "文件不存在")
+                    self.show_custom_dialog("错误", "文件不存在", "error")
             except Exception as e:
-                messagebox.showerror("错误", f"删除失败: {str(e)}")
-        
+                self.show_custom_dialog("错误", f"删除失败: {str(e)}", "error")
+
+        self.show_custom_dialog("确认删除", f"确定要将此文件移到回收站？\n\n{filepath}", "confirm", confirm_delete)
+        return
+
     def select_all_in_group(self, group: dict):
         """选中组内除第一个外的所有文件"""
         for filepath in group['paths'][1:]:
@@ -2186,7 +2202,8 @@ class DuplicateFinderApp(ctk.CTk):
         """快速删除组内除第一个外的所有文件到回收站 - 增量更新，不重新扫描"""
         if len(group['paths']) < 2:
             return
-        if messagebox.askyesno("确认删除", f"确定要将这 {len(group['paths']) - 1} 个重复文件移到回收站？\n\n保留: {os.path.basename(group['paths'][0])}"):
+
+        def confirm_delete():
             deleted_count = 0
             total_wasted = 0
 
@@ -2203,37 +2220,40 @@ class DuplicateFinderApp(ctk.CTk):
                         if filepath in self.selected_files:
                             self.selected_files.discard(filepath)
                 except Exception as e:
-                    self.add_log(f"❌ 删除失败: {filepath}")
+                    self.add_log(f"❌ 删除失败: {os.path.basename(filepath)} - {str(e)}")
+
+            # 如果组内只剩下一个文件，就从结果中移除该组
+            if len(group['paths']) < 2:
+                self.duplicates.remove(group)
 
             # 更新统计
             self.duplicate_files -= deleted_count
             self.wasted_space -= total_wasted
-
-            # 如果组内只剩 <=1 个文件，整个组删掉
-            if len(group['paths']) <= 1:
-                self.duplicates.remove(group)
-                self.duplicate_groups -= 1
+            if self.duplicate_files < 0:
+                self.duplicate_files = 0
+            if self.wasted_space < 0:
+                self.wasted_space = 0
+            self.duplicate_groups = len(self.duplicates)
 
             self.update_stats()
             self.render_results()
 
+        self.show_custom_dialog("确认删除", f"确定要将这 {len(group['paths']) - 1} 个重复文件移到回收站？\n\n保留: {os.path.basename(group['paths'][0])}", "confirm", confirm_delete)
+        return
+
     def batch_quick_delete(self):
         """批量快速删重 - 所有重复组各保留第一个，删除其余"""
         if not self.duplicates:
-            messagebox.showinfo("提示", "没有可删除的重复文件")
+            self.show_custom_dialog("提示", "没有可删除的重复文件", "info")
             return
 
         # 计算总共要删除多少文件
         total_to_delete = sum(len(group['paths']) - 1 for group in self.duplicates if len(group['paths']) > 1)
         if total_to_delete == 0:
-            messagebox.showinfo("提示", "没有可删除的重复文件")
+            self.show_custom_dialog("提示", "没有可删除的重复文件", "info")
             return
 
-        if messagebox.askyesno("确认批量删重",
-            f"确定要对所有 {len(self.duplicates)} 个重复组执行批量删重吗？\n\n"
-            f"每个重复组将保留第一个文件，其余 {total_to_delete} 个文件将移到回收站。\n\n"
-            "此操作不可撤销，但文件可以从回收站恢复。"):
-
+        def confirm_delete():
             deleted_count = 0
             total_wasted = 0
 
@@ -2255,42 +2275,85 @@ class DuplicateFinderApp(ctk.CTk):
                             if filepath in self.selected_files:
                                 self.selected_files.discard(filepath)
                     except Exception as e:
-                        self.add_log(f"❌ 删除失败: {filepath}")
+                        self.add_log(f"❌ 删除失败: {os.path.basename(filepath)} - {str(e)}")
 
-                # 如果组内只剩 <=1 个文件，整个组删掉
-                if len(group['paths']) <= 1:
+                # 如果组内只剩下一个文件，就从结果中移除该组
+                if len(group['paths']) < 2:
                     self.duplicates.remove(group)
-                    self.duplicate_groups -= 1
 
             # 更新统计
             self.duplicate_files -= deleted_count
             self.wasted_space -= total_wasted
+            if self.duplicate_files < 0:
+                self.duplicate_files = 0
+            if self.wasted_space < 0:
+                self.wasted_space = 0
+            self.duplicate_groups = len(self.duplicates)
+
             self.update_stats()
             self.render_results()
 
             self.add_log(f"✅ 批量删重完成，共删除 {deleted_count} 个文件，可节省 {self.format_size(total_wasted)}")
 
+        self.show_custom_dialog("确认批量删重",
+            f"确定要对所有 {len(self.duplicates)} 个重复组执行批量删重吗？\n\n"
+            f"每个重复组将保留第一个文件，其余 {total_to_delete} 个文件将移到回收站。\n\n"
+            "此操作不可撤销，但文件可以从回收站恢复。", "confirm", confirm_delete)
+        return
+
     def show_smart_select_menu(self):
-        """显示智能选择菜单，弹出对话框让用户选择规则"""
+        """显示智能选择菜单 - 自定义弹窗，和主题风格统一"""
         if not self.duplicates:
-            messagebox.showinfo("提示", "请先扫描获取重复文件")
+            self.show_custom_dialog("提示", "请先扫描获取重复文件", "info")
             return
 
-        # 创建弹出菜单
-        menu = tk.Menu(self, tearoff=0)
-        menu.add_command(label="✅ 每个组保留第一个文件 (选择其余)",
-                         command=lambda: self.smart_select_keep("first"))
-        menu.add_command(label="📅 保留最新修改的文件",
-                         command=lambda: self.smart_select_keep("newest"))
-        menu.add_command(label="📅 保留最早修改的文件",
-                         command=lambda: self.smart_select_keep("oldest"))
-        menu.add_command(label="📂 保留路径最短的文件",
-                         command=lambda: self.smart_select_keep("shortest_path"))
+        # 创建自定义弹出窗口
+        menu_win = ctk.CTkToplevel(self)
+        menu_win.title("智能选择")
+        menu_win.geometry("400x270")
+        menu_win.resizable(False, False)
+        menu_win.configure(fg_color=COLORS["bg_darkest"])
+        menu_win.attributes("-topmost", True)
 
-        # 在按钮位置弹出
-        x = self.smart_select_btn.winfo_rootx()
-        y = self.smart_select_btn.winfo_rooty() + self.smart_select_btn.winfo_height()
-        menu.tk_popup(x, y)
+        # 居中显示
+        menu_win.update_idletasks()
+        x = self.smart_select_btn.winfo_rootx() + (self.smart_select_btn.winfo_width() // 2) - 200
+        y = self.smart_select_btn.winfo_rooty() + self.smart_select_btn.winfo_height() + 5
+        menu_win.geometry(f"+{x}+{y}")
+
+        # 标题
+        title_label = ctk.CTkLabel(menu_win, text="🧠 智能选择规则", font=ctk.CTkFont(size=18, weight="bold"), text_color=COLORS["text_primary"])
+        title_label.pack(pady=(20, 10))
+
+        desc_label = ctk.CTkLabel(menu_win, text="选择要保留的文件规则，其余文件将被自动选中", font=ctk.CTkFont(size=13), text_color=COLORS["text_muted"])
+        desc_label.pack(pady=(0, 20))
+
+        # 按钮选项
+        def select_and_close(rule):
+            menu_win.destroy()
+            self.smart_select_keep(rule)
+
+        btn1 = ctk.CTkButton(menu_win, text="✅ 每个组保留第一个文件", font=ctk.CTkFont(size=14, weight="bold"), height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], command=lambda: select_and_close("first"))
+        btn1.pack(fill="x", padx=20, pady=3)
+
+        btn2 = ctk.CTkButton(menu_win, text="📅 保留最新修改的文件", font=ctk.CTkFont(size=14, weight="bold"), height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], command=lambda: select_and_close("newest"))
+        btn2.pack(fill="x", padx=20, pady=3)
+
+        btn3 = ctk.CTkButton(menu_win, text="📅 保留最早修改的文件", font=ctk.CTkFont(size=14, weight="bold"), height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], command=lambda: select_and_close("oldest"))
+        btn3.pack(fill="x", padx=20, pady=3)
+
+        btn4 = ctk.CTkButton(menu_win, text="📂 保留路径最短的文件", font=ctk.CTkFont(size=14, weight="bold"), height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], command=lambda: select_and_close("shortest_path"))
+        btn4.pack(fill="x", padx=20, pady=3)
+
+        # 点击外部关闭窗口
+        def close_on_focus_out(event):
+            if event.widget == menu_win:
+                menu_win.destroy()
+        menu_win.bind("<FocusOut>", close_on_focus_out)
+
+        # 所有按钮鼠标手型
+        for btn in [btn1, btn2, btn3, btn4]:
+            btn.configure(cursor="hand2")
 
     def smart_select_keep(self, rule: str):
         """根据规则智能选择要删除的文件（保留一个，选中其余）"""
@@ -2359,13 +2422,14 @@ class DuplicateFinderApp(ctk.CTk):
         self.add_log(f"✅ 智能选择完成: {total_selected} 个文件已选中")
 
         if total_selected > 0:
-            messagebox.showinfo("完成", f"已按规则选中 {total_selected} 个文件\n\n点击左侧「删除选中文件」进行删除")
+            self.show_custom_dialog("完成", f"已按规则选中 {total_selected} 个文件\n\n点击左侧「删除选中文件」进行删除", "info")
 
     def delete_selected(self):
         """删除选中的文件到回收站 - 增量更新，不重新扫描"""
         if not self.selected_files:
             return
-        if messagebox.askyesno("确认删除", f"确定要将这 {len(self.selected_files)} 个文件移到回收站？"):
+
+        def confirm_delete():
             deleted_count = 0
             total_wasted = 0
 
@@ -2379,28 +2443,37 @@ class DuplicateFinderApp(ctk.CTk):
                         total_wasted += size
                         self.add_log(f"🗑️ 已删除: {os.path.basename(filepath)}")
 
-                        # 从 duplicates 中移除这个文件
-                        for group in list(self.duplicates):
+                        # 查找该文件所在的组
+                        for group in self.duplicates:
                             if filepath in group['paths']:
                                 group['paths'].remove(filepath)
-                                # 如果组内只剩 <=1 个文件，整个组删掉
-                                if len(group['paths']) <= 1:
+                                # 如果组内只剩下一个文件，就从结果中移除该组
+                                if len(group['paths']) < 2:
                                     self.duplicates.remove(group)
-                                    self.duplicate_groups -= 1
                                 break
                 except Exception as e:
-                    self.add_log(f"❌ 删除失败: {filepath}")
+                    self.add_log(f"❌ 删除失败: {os.path.basename(filepath)} - {str(e)}")
 
             # 更新统计
             self.duplicate_files -= deleted_count
             self.wasted_space -= total_wasted
+            if self.duplicate_files < 0:
+                self.duplicate_files = 0
+            if self.wasted_space < 0:
+                self.wasted_space = 0
+            self.duplicate_groups = len(self.duplicates)
+
             self.update_stats()
             self.render_results()
-                
+            self.add_log(f"✅ 删除完成，共删除 {deleted_count} 个文件")
+
+        self.show_custom_dialog("确认删除", f"确定要将这 {len(self.selected_files)} 个文件移到回收站？", "confirm", confirm_delete)
+        return
+
     def export_report(self):
         """导出检测报告"""
         if not self.duplicates:
-            messagebox.showinfo("提示", "没有可导出的数据")
+            self.show_custom_dialog("提示", "没有可导出的数据", "info")
             return
             
         filepath = filedialog.asksaveasfilename(title="导出报告", defaultextension=".json", filetypes=[("JSON 文件", "*.json")], initialfile=f"duplicate_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
@@ -2415,7 +2488,68 @@ class DuplicateFinderApp(ctk.CTk):
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
             self.add_log(f"📊 报告已导出: {filepath}")
-            messagebox.showinfo("成功", f"报告已导出到:\n{filepath}")
+            self.show_custom_dialog("成功", f"报告已导出到:\n{filepath}", "info")
+
+    def show_custom_dialog(self, title, message, dialog_type="info", confirm_callback=None):
+        """自定义弹窗，和主题风格统一，支持信息/警告/错误/确认类型"""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title(title)
+        dialog.geometry("500x220")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=COLORS["bg_darkest"])
+        dialog.attributes("-topmost", True)
+
+        # 居中显示
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - 250
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - 110
+        dialog.geometry(f"+{x}+{y}")
+
+        # 图标和标题
+        icon_map = {
+            "info": "ℹ️",
+            "warning": "⚠️",
+            "error": "❌",
+            "confirm": "❓"
+        }
+        icon = icon_map.get(dialog_type, "ℹ️")
+
+        icon_label = ctk.CTkLabel(dialog, text=icon, font=ctk.CTkFont(size=40))
+        icon_label.pack(pady=(25, 0))
+
+        # 消息文本，支持换行
+        msg_label = ctk.CTkLabel(dialog, text=message, font=ctk.CTkFont(size=14), text_color=COLORS["text_primary"], wraplength=450, justify="left")
+        msg_label.pack(pady=(10, 25), padx=20)
+
+        # 按钮区域
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=(0, 20))
+
+        def close_dialog(result=None):
+            dialog.destroy()
+            if confirm_callback is not None and result:
+                confirm_callback()
+
+        if dialog_type == "confirm":
+            # 确认弹窗有两个按钮
+            cancel_btn = ctk.CTkButton(btn_frame, text="取消", width=120, height=38, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(False))
+            cancel_btn.pack(side="left", padx=10)
+            cancel_btn.configure(cursor="hand2")
+
+            confirm_btn = ctk.CTkButton(btn_frame, text="确定", width=120, height=38, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(True))
+            confirm_btn.pack(side="left", padx=10)
+            confirm_btn.configure(cursor="hand2")
+        else:
+            # 信息类弹窗只有一个确定按钮
+            ok_btn = ctk.CTkButton(btn_frame, text="确定", width=120, height=38, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=close_dialog)
+            ok_btn.pack()
+            ok_btn.configure(cursor="hand2")
+
+        # 回车确定
+        dialog.bind("<Return>", lambda e: close_dialog(True))
+        dialog.bind("<Escape>", lambda e: close_dialog(False))
+
+        return dialog
 
     def _toggle_theme(self):
         """切换主题 - 实时更新，不需要重启"""
@@ -2450,7 +2584,7 @@ class DuplicateFinderApp(ctk.CTk):
         else:
             self.show_empty_state()
 
-        messagebox.showinfo("提示", "主题切换完成，已实时应用")
+        self.show_custom_dialog("提示", "主题切换完成，已实时应用", "info")
 
 
 if __name__ == "__main__":
