@@ -643,9 +643,6 @@ class DuplicateFinderApp(ctk.CTk):
         # CTkScrollableFrame 不支持 grid_propagate，注释掉防止报错
         # self.result_frame.grid_propagate(False)  # 防止 resize 时重新计算
 
-        # 优化滚动速度，减少快速滚动时的重绘压力
-        self.result_frame._scrollbar.configure(jump=1)
-
         # 空状态
         self.show_empty_state()
         
