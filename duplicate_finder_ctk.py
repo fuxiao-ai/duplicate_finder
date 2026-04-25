@@ -1370,8 +1370,8 @@ class DuplicateFinderApp(ctk.CTk):
         
     def _create_simple_row(self, idx: int, group: dict):
         """创建美化版行"""
-        # 美化卡片：增加边框、合适的高度、hover效果，解决底色超出边框问题
-        row = ctk.CTkFrame(self.result_frame, fg_color=COLORS["bg_card"], corner_radius=12, height=72, border_width=1, border_color=COLORS["border"])
+        # 美化卡片：增加边框、合适的高度、hover效果，解决文案超出边框问题
+        row = ctk.CTkFrame(self.result_frame, fg_color=COLORS["bg_card"], corner_radius=12, height=78, border_width=1, border_color=COLORS["border"])
         row._idx = idx
         row._group = group
         row._expanded = False
@@ -1416,7 +1416,7 @@ class DuplicateFinderApp(ctk.CTk):
             font=ctk.CTkFont(size=15, weight="bold"),
             text_color=COLORS["text_primary"],
             anchor="w"
-        ).pack(fill="x", pady=(10, 0), anchor="w")
+        ).pack(fill="x", pady=(8, 0), anchor="w")
 
         ctk.CTkLabel(
             info_container,
@@ -1424,7 +1424,7 @@ class DuplicateFinderApp(ctk.CTk):
             font=ctk.CTkFont(size=12),
             text_color=COLORS["text_muted"],
             anchor="w"
-        ).pack(fill="x", pady=(1, 0), anchor="w")
+        ).pack(fill="x", pady=(0, 0), anchor="w")
 
         # 操作按钮 - 右侧容器，调整高度适配
         btns = ctk.CTkFrame(row, fg_color="transparent", width=116, height=68)
