@@ -1392,9 +1392,9 @@ class DuplicateFinderApp(ctk.CTk):
         badge.pack_propagate(False)
         ctk.CTkLabel(badge, text=f"#{idx+1}", font=ctk.CTkFont(size=14, weight="bold"), text_color="white").place(relx=0.5, rely=0.5, anchor="center")
 
-        # 信息区域 - 显示文件数量+大小统计，更直观
+        # 信息区域 - 显示文件数量+大小统计，更直观，增加右padding避免文字超出边框
         info_container = ctk.CTkFrame(row, fg_color="transparent")
-        info_container.pack(side="left", fill="both", expand=True, padx=(88, 10))
+        info_container.pack(side="left", fill="both", expand=True, padx=(88, 120))
 
         # 格式化文件大小显示
         def format_size(size):
@@ -1691,9 +1691,9 @@ class DuplicateFinderApp(ctk.CTk):
                 font=ctk.CTkFont(size=11),
                 text_color=COLORS["text_secondary"],
                 anchor="w",
-                width=1  # width 在构造函数，已经有了
+                wraplength=800  # 限制最大宽度，避免超出
             )
-            text_label.place(x=72, y=0, relwidth=1, relheight=1)
+            text_label.place(x=72, y=0, relwidth=0.7, relheight=1)  # 留出30%宽度给右边按钮，避免超出
 
             # 打开文件、打开文件夹、删除 三个按钮靠右
             open_btn = ctk.CTkButton(
@@ -1804,9 +1804,9 @@ class DuplicateFinderApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
             text_color=COLORS["text_secondary"],
             anchor="w",
-            width=1  # width 在构造函数
+            wraplength=800  # 限制最大宽度，避免超出
         )
-        text_label.place(x=72, y=0, relwidth=1, relheight=1)
+        text_label.place(x=72, y=0, relwidth=0.7, relheight=1)  # 留出30%宽度给右边按钮，避免超出
 
         # 打开文件、打开文件夹、删除 三个按钮靠右
         open_btn = ctk.CTkButton(
@@ -2345,11 +2345,16 @@ class DuplicateFinderApp(ctk.CTk):
         btn4 = ctk.CTkButton(menu_win, text="📂 保留路径最短的文件", font=ctk.CTkFont(size=14, weight="bold"), height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], command=lambda: select_and_close("shortest_path"))
         btn4.pack(fill="x", padx=20, pady=3)
 
-        # 点击外部关闭窗口
+        # 点击外部关闭窗口，增加窗口存在性检查避免错误
         def close_on_focus_out(event):
-            if event.widget == menu_win:
-                menu_win.destroy()
+            if event.widget == menu_win and menu_win.winfo_exists():
+                try:
+                    menu_win.destroy()
+                except:
+                    pass
         menu_win.bind("<FocusOut>", close_on_focus_out)
+        # 增加ESC快捷键关闭
+        menu_win.bind("<Escape>", lambda e: close_on_focus_out(e))
 
         # 所有按钮鼠标手型
         for btn in [btn1, btn2, btn3, btn4]:
@@ -2494,8 +2499,9 @@ class DuplicateFinderApp(ctk.CTk):
         """自定义弹窗，和主题风格统一，支持信息/警告/错误/确认类型"""
         dialog = ctk.CTkToplevel(self)
         dialog.title(title)
-        dialog.geometry("500x220")
-        dialog.resizable(False, False)
+        dialog.geometry("520x240")
+        dialog.resizable(True, True)
+        dialog.minsize(520, 240)
         dialog.configure(fg_color=COLORS["bg_darkest"])
         dialog.attributes("-topmost", True)
 
@@ -2526,22 +2532,26 @@ class DuplicateFinderApp(ctk.CTk):
         btn_frame.pack(pady=(0, 20))
 
         def close_dialog(result=None):
-            dialog.destroy()
-            if confirm_callback is not None and result:
-                confirm_callback()
+            try:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                if confirm_callback is not None and result:
+                    confirm_callback()
+            except:
+                pass
 
         if dialog_type == "confirm":
-            # 确认弹窗有两个按钮
-            cancel_btn = ctk.CTkButton(btn_frame, text="取消", width=120, height=38, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(False))
-            cancel_btn.pack(side="left", padx=10)
+            # 确认弹窗有两个按钮，增加宽度避免被压缩
+            cancel_btn = ctk.CTkButton(btn_frame, text="取消", width=150, height=40, fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(False))
+            cancel_btn.pack(side="left", padx=15)
             cancel_btn.configure(cursor="hand2")
 
-            confirm_btn = ctk.CTkButton(btn_frame, text="确定", width=120, height=38, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(True))
-            confirm_btn.pack(side="left", padx=10)
+            confirm_btn = ctk.CTkButton(btn_frame, text="确定", width=150, height=40, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=lambda: close_dialog(True))
+            confirm_btn.pack(side="left", padx=15)
             confirm_btn.configure(cursor="hand2")
         else:
-            # 信息类弹窗只有一个确定按钮
-            ok_btn = ctk.CTkButton(btn_frame, text="确定", width=120, height=38, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=close_dialog)
+            # 信息类弹窗只有一个确定按钮，增加宽度避免被压缩
+            ok_btn = ctk.CTkButton(btn_frame, text="确定", width=150, height=40, fg_color=COLORS["accent_blue"], hover_color=COLORS["accent_blue"], font=ctk.CTkFont(size=14, weight="bold"), command=close_dialog)
             ok_btn.pack()
             ok_btn.configure(cursor="hand2")
 
