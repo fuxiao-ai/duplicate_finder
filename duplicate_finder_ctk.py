@@ -1364,50 +1364,88 @@ class DuplicateFinderApp(ctk.CTk):
             self._render_current_page()
         
     def _create_simple_row(self, idx: int, group: dict):
-        """创建简洁行"""
-        row = ctk.CTkFrame(self.result_frame, fg_color=COLORS["bg_card"], corner_radius=12, height=60)
+        """创建美化版行"""
+        # 美化卡片：增加边框、合适的高度、hover效果
+        row = ctk.CTkFrame(self.result_frame, fg_color=COLORS["bg_card"], corner_radius=12, height=68, border_width=1, border_color=COLORS["border"])
         row._idx = idx
         row._group = group
         row._expanded = False
-        row.pack(fill="x", pady=6)
+        row.pack(fill="x", pady=8, padx=4)
         row.pack_propagate(False)
 
-        # 序号 - 蓝色背景徽章
-        badge = ctk.CTkFrame(row, fg_color=COLORS["accent_blue"], corner_radius=6, width=50, height=28)
-        badge.place(relx=0, rely=0.5, x=12, y=0, anchor="w")
-        badge.pack_propagate(False)
-        ctk.CTkLabel(badge, text=f"#{idx+1}", font=ctk.CTkFont(size=13, weight="bold"), text_color="white").place(relx=0.5, rely=0.5, anchor="center")
+        # 鼠标悬停高亮效果
+        def on_enter(e):
+            row.configure(fg_color=COLORS["bg_elevated"], border_color=COLORS["accent_blue"])
+        def on_leave(e):
+            row.configure(fg_color=COLORS["bg_card"], border_color=COLORS["border"])
+        row.bind("<Enter>", on_enter)
+        row.bind("<Leave>", on_leave)
 
-        # 信息区域 - 只显示文件数量（不需要名称和大小）
+        # 序号 - 更大更美观的徽章
+        badge = ctk.CTkFrame(row, fg_color=COLORS["accent_blue"], corner_radius=8, width=56, height=32)
+        badge.place(relx=0, rely=0.5, x=16, y=0, anchor="w")
+        badge.pack_propagate(False)
+        ctk.CTkLabel(badge, text=f"#{idx+1}", font=ctk.CTkFont(size=14, weight="bold"), text_color="white").place(relx=0.5, rely=0.5, anchor="center")
+
+        # 信息区域 - 显示文件数量+大小统计，更直观
         info_container = ctk.CTkFrame(row, fg_color="transparent")
-        info_container.pack(side="left", fill="both", expand=True, padx=(72, 10))
+        info_container.pack(side="left", fill="both", expand=True, padx=(88, 10))
+
+        # 格式化文件大小显示
+        def format_size(size):
+            if size < 1024:
+                return f"{size} B"
+            elif size < 1024*1024:
+                return f"{size/1024:.1f} KB"
+            elif size < 1024*1024*1024:
+                return f"{size/(1024*1024):.1f} MB"
+            else:
+                return f"{size/(1024*1024*1024):.2f} GB"
+
+        total_size = format_size(group['size'] * len(group['paths']))
+        wasted_size = format_size(group['size'] * (len(group['paths']) - 1))
 
         ctk.CTkLabel(
             info_container,
             text=f"{len(group['paths'])} 个重复文件",
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(size=15, weight="bold"),
             text_color=COLORS["text_primary"],
             anchor="w"
-        ).pack(fill="both", expand=True, pady=16)
+        ).pack(fill="x", pady=(12, 0), anchor="w")
 
-        # 操作按钮 - 右侧容器
-        btns = ctk.CTkFrame(row, fg_color="transparent", width=108, height=60)
-        btns.pack(side="right", padx=10)
+        ctk.CTkLabel(
+            info_container,
+            text=f"总大小 {total_size} · 可清理 {wasted_size}",
+            font=ctk.CTkFont(size=12),
+            text_color=COLORS["text_muted"],
+            anchor="w"
+        ).pack(fill="x", pady=(2, 0), anchor="w")
+
+        # 操作按钮 - 右侧容器，调整高度适配
+        btns = ctk.CTkFrame(row, fg_color="transparent", width=116, height=68)
+        btns.pack(side="right", padx=12)
         btns.pack_propagate(False)
+        btns.place(relx=1, rely=0.5, anchor="e", x=-12)
 
         expand_btn = ctk.CTkButton(
-            btns, text="▼", width=36, height=36,
+            btns, text="▼", width=40, height=40,
             fg_color=COLORS["bg_elevated"], hover_color=COLORS["bg_hover"],
-            corner_radius=8, font=ctk.CTkFont(size=14),
+            corner_radius=10, font=ctk.CTkFont(size=16, weight="bold"),
             command=lambda r=row: self._toggle_expand(r)
         )
-        expand_btn.pack(side="left", padx=2)
-        ctk.CTkButton(
-            btns, text="删重", width=60, height=36,
+        expand_btn.pack(side="left", padx=3)
+        # 删重按钮，样式更醒目
+        delete_btn = ctk.CTkButton(
+            btns, text="删重", width=64, height=40,
             fg_color=COLORS["accent_red"], hover_color="#dc2626",
-            corner_radius=8, font=ctk.CTkFont(size=12),
+            corner_radius=10, font=ctk.CTkFont(size=13, weight="bold"),
             command=lambda g=group: self.quick_delete_group(g)
-        ).pack(side="left", padx=2)
+        )
+        delete_btn.pack(side="left", padx=3)
+
+        # 按钮悬停效果，鼠标变手型
+        expand_btn.configure(cursor="hand2")
+        delete_btn.configure(cursor="hand2")
     
     def _toggle_expand(self, row):
         """切换展开/收起"""
