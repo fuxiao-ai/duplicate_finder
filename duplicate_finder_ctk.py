@@ -2307,16 +2307,13 @@ class DuplicateFinderApp(ctk.CTk):
             self.show_custom_dialog("提示", "请先扫描获取重复文件", "info")
             return
 
-        # 创建自定义弹出窗口
-        menu_win = ctk.CTkToplevel(self)
+        # 创建自定义弹出窗口，使用原生标题栏彻底避免内部回调bug
+        menu_win = ctk.CTkToplevel(self, title_bar_color=None)
         menu_win.title("智能选择")
         menu_win.geometry("400x270")
         menu_win.resizable(False, False)
         menu_win.configure(fg_color=COLORS["bg_darkest"])
         menu_win.attributes("-topmost", True)
-        # 修复CustomTkinter内部回调bug：窗口销毁后避免执行deiconify报错
-        if hasattr(menu_win, '_revert_withdraw_after_windows_set_titlebar_color'):
-            menu_win._revert_withdraw_after_windows_set_titlebar_color = lambda: None
 
         # 居中显示
         menu_win.update_idletasks()
@@ -2500,16 +2497,13 @@ class DuplicateFinderApp(ctk.CTk):
 
     def show_custom_dialog(self, title, message, dialog_type="info", confirm_callback=None):
         """自定义弹窗，和主题风格统一，支持信息/警告/错误/确认类型"""
-        dialog = ctk.CTkToplevel(self)
+        dialog = ctk.CTkToplevel(self, title_bar_color=None)
         dialog.title(title)
         dialog.geometry("520x240")
         dialog.resizable(True, True)
         dialog.minsize(520, 240)
         dialog.configure(fg_color=COLORS["bg_darkest"])
         dialog.attributes("-topmost", True)
-        # 修复CustomTkinter内部回调bug：窗口销毁后避免执行deiconify报错
-        if hasattr(dialog, '_revert_withdraw_after_windows_set_titlebar_color'):
-            dialog._revert_withdraw_after_windows_set_titlebar_color = lambda: None
 
         # 居中显示
         dialog.update_idletasks()
