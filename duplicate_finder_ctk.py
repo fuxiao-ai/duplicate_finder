@@ -258,6 +258,9 @@ class DuplicateFinderApp(ctk.CTk):
         self.geometry("480x580")
         self.minsize(400, 520)
 
+        # 开启全局双缓冲，解决窗口拖动、滚动时的残影/闪烁问题
+        self.attributes('-doublebuffer', True)
+
         # 配置窗口背景
         self.configure(fg_color=COLORS["bg_darkest"])
 
@@ -631,16 +634,22 @@ class DuplicateFinderApp(ctk.CTk):
         )
         self.status_label.pack(side="right")
         
-        # 结果区域
+        # 结果区域：优化滚动性能，解决残影问题
         self.result_frame = ctk.CTkScrollableFrame(
-            self.right_panel, 
+            self.right_panel,
             fg_color="transparent",
             scrollbar_button_color=COLORS["bg_elevated"],
-            scrollbar_button_hover_color=COLORS["bg_hover"]
+            scrollbar_button_hover_color=COLORS["bg_hover"],
+            label_fg_color="transparent"
         )
         self.result_frame.grid(row=1, column=0, sticky="nsew", padx=24, pady=(16, 8))
         # CTkScrollableFrame 不支持 grid_propagate，注释掉防止报错
         # self.result_frame.grid_propagate(False)  # 防止 resize 时重新计算
+
+        # 优化滚动速度，减少快速滚动时的重绘压力
+        self.result_frame._scrollbar.configure(jump=1)
+        # 开启双缓冲，减少闪烁和残影
+        self.result_frame._parent_canvas.configure(doublebuffer=True)
 
         # 空状态
         self.show_empty_state()
@@ -1225,8 +1234,8 @@ class DuplicateFinderApp(ctk.CTk):
         self._total_groups = len(self.duplicates)
         self._cancel_rendering = False
 
-        # 分页设置：大数据量时分页，减少同时渲染的组件数量
-        self._page_size = 50  # 每页50组
+        # 分页设置：减少每页数量，减轻渲染压力，解决滚动残影
+        self._page_size = 30  # 每页30组，减少同时渲染的组件
         self._current_page = 0
         self._total_pages = (self._total_groups + self._page_size - 1) // self._page_size
 
