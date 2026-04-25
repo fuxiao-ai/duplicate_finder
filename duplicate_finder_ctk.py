@@ -258,9 +258,6 @@ class DuplicateFinderApp(ctk.CTk):
         self.geometry("480x580")
         self.minsize(400, 520)
 
-        # 开启全局双缓冲，解决窗口拖动、滚动时的残影/闪烁问题
-        self.attributes('-doublebuffer', True)
-
         # 配置窗口背景
         self.configure(fg_color=COLORS["bg_darkest"])
 
@@ -648,8 +645,6 @@ class DuplicateFinderApp(ctk.CTk):
 
         # 优化滚动速度，减少快速滚动时的重绘压力
         self.result_frame._scrollbar.configure(jump=1)
-        # 开启双缓冲，减少闪烁和残影
-        self.result_frame._parent_canvas.configure(doublebuffer=True)
 
         # 空状态
         self.show_empty_state()
