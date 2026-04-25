@@ -1,0 +1,11 @@
+login_secret.json
+__pycache__/
+dist/
+*.spec
+build/
+
+
+# Added by cargo
+
+/target
+node_modules
