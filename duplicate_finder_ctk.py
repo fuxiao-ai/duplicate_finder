@@ -382,21 +382,25 @@ class DuplicateFinderApp(ctk.CTk):
         
         add_btn = ctk.CTkButton(
             dir_btn_frame,
-            text="➕ 添加目录",
+            text="📂 添加目录",
             command=self.add_directory,
             height=38,
+            font=ctk.CTkFont(size=13, weight="bold"),
             **get_button_primary()
         )
         add_btn.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        add_btn.configure(cursor="hand2")
 
         clear_btn = ctk.CTkButton(
             dir_btn_frame,
-            text="清空列表",
+            text="🗑️ 清空列表",
             command=self.clear_directories,
             height=38,
+            font=ctk.CTkFont(size=13, weight="bold"),
             **get_button_danger()
         )
         clear_btn.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        clear_btn.configure(cursor="hand2")
         
         # 开始扫描按钮 - 大号渐变
         self.scan_btn = ctk.CTkButton(
