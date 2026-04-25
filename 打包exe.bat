@@ -1,5 +1,7 @@
 @echo off
-chcp 65001 >nul
+setlocal enabledelayedexpansion
+:: 切换到GBK编码，避免中文乱码
+chcp 936 >nul
 echo ==============================================
 echo 重复文件检测工具 EXE打包脚本
 echo ==============================================

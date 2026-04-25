@@ -1,6 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul
+:: 切换到GBK编码，避免中文乱码
+chcp 936 >nul
 echo ==============================================
 echo 重复文件检测工具 快捷启动器
 echo ==============================================
