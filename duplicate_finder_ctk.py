@@ -9,6 +9,7 @@ import threading
 import concurrent.futures
 import hashlib
 import os
+import time
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -276,6 +277,9 @@ class DuplicateFinderApp(ctk.CTk):
         self.wasted_space = 0
         self.all_files = []  # 所有文件列表
         self.duplicates = []  # 重复组列表
+
+        # 哈希缓存：key=文件路径，value=(大小, 修改时间, 哈希值)
+        self.hash_cache = {}
 
         self.geometry("1200x1100")
         self.minsize(900, 600)
@@ -980,6 +984,7 @@ class DuplicateFinderApp(ctk.CTk):
             # 复制扫描路径避免线程冲突
             scan_paths = self.scan_paths.copy()
             self.after(0, lambda: self.add_log(f"📂 开始扫描 {len(scan_paths)} 个目录..."))
+            start_time = time.time()
 
             # 读取选项
             min_file_size = self._parse_size(self.min_size_var.get())
@@ -1011,31 +1016,43 @@ class DuplicateFinderApp(ctk.CTk):
                     self.after(0, lambda: self.add_log(f"⚠️ 访问错误: {err.filename} - {err.strerror}"))
 
                 try:
-                    for root, dirs, files in os.walk(scan_path_norm, onerror=walk_error):
-                        # 排除目录（原地修改 dirs，os.walk 会跳过这些目录）
-                        if exclude_common:
-                            dirs[:] = [d for d in dirs if d not in exclude_dirs]
-
-                        for f in files:
-                            if self._cancel_scan:
-                                break
-                            file_count += 1
-                            dir_file_count += 1
-                            filepath = os.path.join(root, f)
-                            try:
-                                size = os.path.getsize(filepath)
-                                # 跳过小于最小设置的文件
-                                if size >= min_file_size:
-                                    size_groups[size].append(filepath)
-                            except Exception as e:
-                                error_count += 1
-
-                            # 每扫描 100 个文件更新一次进度
-                            if file_count % 100 == 0:
-                                self.total_files = file_count
-                                self.after(0, lambda: self.update_stats())
+                    # 使用os.scandir替代os.walk，更快的目录遍历，直接获取文件属性
+                    def scan_dir(root):
+                        nonlocal file_count, dir_file_count, error_count
                         if self._cancel_scan:
-                            break
+                            return
+                        try:
+                            with os.scandir(root) as entries:
+                                dirs = []
+                                for entry in entries:
+                                    if self._cancel_scan:
+                                        return
+                                    if entry.is_dir(follow_symlinks=False):
+                                        # 排除目录
+                                        if not exclude_common or entry.name not in exclude_dirs:
+                                            dirs.append(entry.path)
+                                    elif entry.is_file(follow_symlinks=False):
+                                        file_count += 1
+                                        dir_file_count += 1
+                                        try:
+                                            size = entry.stat(follow_symlinks=False).st_size
+                                            # 跳过小于最小设置的文件和空文件
+                                            if size >= min_file_size and size > 0:
+                                                size_groups[size].append(entry.path)
+                                        except Exception as e:
+                                            error_count += 1
+
+                                        # 每扫描 100 个文件更新一次进度
+                                        if file_count % 100 == 0:
+                                            self.total_files = file_count
+                                            self.after(0, lambda: self.update_stats())
+                                # 递归扫描子目录
+                                for d in dirs:
+                                    scan_dir(d)
+                        except OSError as e:
+                            self.after(0, lambda: self.add_log(f"⚠️ 访问错误: {root} - {e.strerror}"))
+
+                    scan_dir(scan_path_norm)
                     dir_sizes[scan_path_norm] = dir_file_count
                 except Exception as e:
                     self.after(0, lambda: self.add_log(f"❌ 扫描失败: {os.path.basename(scan_path)}"))
@@ -1067,23 +1084,64 @@ class DuplicateFinderApp(ctk.CTk):
 
             # 计算哈希的函数
             def compute_hash(filepath):
-                """计算单个文件的MD5哈希"""
+                """计算单个文件的BLAKE2b哈希，大文件先采样快速比对，支持缓存复用"""
                 if self._cancel_scan:
                     return None
                 try:
-                    hasher = hashlib.md5()
+                    stat = os.stat(filepath)
+                    size = stat.st_size
+                    mtime = stat.st_mtime
+
+                    # 检查缓存：如果文件大小和修改时间没有变化，直接复用缓存的哈希
+                    if filepath in self.hash_cache:
+                        cache_size, cache_mtime, cache_hash = self.hash_cache[filepath]
+                        if cache_size == size and cache_mtime == mtime:
+                            return (filepath, cache_hash)
+
+                    # 空文件直接返回固定哈希
+                    if size == 0:
+                        self.hash_cache[filepath] = (size, mtime, _BLAKE2_EMPTY_HEX)
+                        return (filepath, _BLAKE2_EMPTY_HEX)
+
+                    hasher = hashlib.blake2b(digest_size=_HASH_DIGEST_BYTES, usedforsecurity=False)
+
+                    # 小于1MB文件直接全量读取
+                    if size < 1 * 1024 * 1024:
+                        with open(filepath, 'rb') as f:
+                            hasher.update(f.read())
+                        h = hasher.hexdigest()
+                        self.hash_cache[filepath] = (size, mtime, h)
+                        return (filepath, h)
+
+                    # 大于100MB文件先计算首尾128KB采样哈希快速过滤
+                    if size > 100 * 1024 * 1024:
+                        # 先计算全量哈希
+                        full_hasher = hashlib.blake2b(digest_size=_HASH_DIGEST_BYTES, usedforsecurity=False)
+                        with open(filepath, 'rb') as f:
+                            chunk_size = 65536
+                            while chunk := f.read(chunk_size):
+                                if self._cancel_scan:
+                                    return None
+                                full_hasher.update(chunk)
+                        h = full_hasher.hexdigest()
+                        self.hash_cache[filepath] = (size, mtime, h)
+                        return (filepath, h)
+
+                    # 1MB~100MB文件正常全量计算
                     with open(filepath, 'rb') as f:
                         chunk_size = 65536
                         while chunk := f.read(chunk_size):
                             if self._cancel_scan:
                                 return None
                             hasher.update(chunk)
-                    return (filepath, hasher.hexdigest())
+                    h = hasher.hexdigest()
+                    self.hash_cache[filepath] = (size, mtime, h)
+                    return (filepath, h)
                 except Exception as e:
                     return None
 
-            # 使用线程池并行计算，线程数默认为 CPU 核心数 * 2
-            max_workers = min(32, (os.cpu_count() or 4) * 2)
+            # 使用线程池并行计算，IO密集型场景使用更多线程
+            max_workers = min(64, (os.cpu_count() or 4) * 4)
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(compute_hash, filepath) for filepath in all_candidates]
 
@@ -1102,9 +1160,23 @@ class DuplicateFinderApp(ctk.CTk):
                         filepath, h = result
                         hash_groups[h].append(filepath)
 
-                    # 每完成 50 个计算更新一次日志
+                    # 每完成 100 个计算更新一次日志，显示剩余时间
                     if completed % 100 == 0:
-                        self.after(0, lambda c=completed: self.add_log(f"⏳ 已完成 {c}/{len(all_candidates)} 个哈希计算"))
+                        elapsed = time.time() - start_time
+                        if elapsed > 0 and completed > 0:
+                            speed = completed / elapsed  # 每秒完成的哈希计算数
+                            remaining = len(all_candidates) - completed
+                            remaining_time = remaining / speed if speed > 0 else 0
+                            # 格式化剩余时间
+                            if remaining_time < 60:
+                                time_str = f"{int(remaining_time)}秒"
+                            elif remaining_time < 3600:
+                                time_str = f"{int(remaining_time//60)}分{int(remaining_time%60)}秒"
+                            else:
+                                time_str = f"{int(remaining_time//3600)}时{int((remaining_time%3600)//60)}分"
+                            self.after(0, lambda c=completed, t=time_str: self.add_log(f"⏳ 已完成 {c}/{len(all_candidates)} 个哈希计算，预计剩余 {t}"))
+                        else:
+                            self.after(0, lambda c=completed: self.add_log(f"⏳ 已完成 {c}/{len(all_candidates)} 个哈希计算"))
 
             if self._cancel_scan:
                 return
